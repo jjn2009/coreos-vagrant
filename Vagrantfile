@@ -5,7 +5,12 @@ require 'fileutils'
 
 Vagrant.require_version ">= 1.6.0"
 
-CLOUD_CONFIG_PATH = File.join(File.dirname(__FILE__), "user-data")
+
+CLOUD_CONFIG_PATH_MASTER = File.join(File.dirname(__FILE__), "user-data-master.yml")
+CLOUD_CONFIG_PATH_WORKER = File.join(File.dirname(__FILE__), "user-data-worker.yml")
+
+CERT_PATH = 'tls/certs/'
+
 CONFIG = File.join(File.dirname(__FILE__), "config.rb")
 
 # Defaults for config options defined in CONFIG
@@ -73,7 +78,13 @@ Vagrant.configure("2") do |config|
   end
 
   (1..$num_instances).each do |i|
-    config.vm.define vm_name = "%s-%02d" % [$instance_name_prefix, i] do |config|
+    if i == 1 then
+      node_type = 'master'
+    else
+      node_type = 'worker'
+    end
+
+    config.vm.define vm_name = "%s-%s-%02d" % [$instance_name_prefix, node_type, i] do |config|
       config.vm.hostname = vm_name
 
       if $enable_serial_logging
@@ -133,8 +144,22 @@ Vagrant.configure("2") do |config|
         config.vm.synced_folder ENV['HOME'], ENV['HOME'], id: "home", :nfs => true, :mount_options => ['nolock,vers=3,udp']
       end
 
-      if File.exist?(CLOUD_CONFIG_PATH)
-        config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH}", :destination => "/tmp/vagrantfile-user-data"
+
+      if node_type == 'master' && File.exist?(CLOUD_CONFIG_PATH_MASTER) then
+        config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH_MASTER}", :destination => "/tmp/vagrantfile-user-data"
+        config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
+
+        config.vm.provision :shell, :inline => "mkdir -p /etc/ssl/etcd/certs /tmp/certs", :privileged => true
+
+        # Provision Certs, TODO make sure this gets uses node names
+        config.vm.provision :file, :source => "#{CERT_PATH}/ca.pem", :destination => "certs/ca.pem"
+        config.vm.provision :file, :source => "#{CERT_PATH}/etcd#{i}.pem", :destination => "certs/etcd#{i}.pem"
+        config.vm.provision :file, :source => "#{CERT_PATH}/etcd#{i}-key.pem", :destination => "certs/etcd#{i}-key.pem"
+
+        config.vm.provision :shell, :inline => "mv certs/* /etc/ssl/etcd/certs/", :privileged => true
+
+      else node_type == 'worker' && File.exist?(CLOUD_CONFIG_PATH_WORKER)
+        config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH_WORKER}", :destination => "/tmp/vagrantfile-user-data"
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
       end
 
