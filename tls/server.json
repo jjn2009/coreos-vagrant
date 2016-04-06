@@ -1,8 +1,8 @@
 {
-    "CN": "core-01",
+    "CN": "core-master-01",
     "hosts": [
-        "core-01.local",
-        "core-01"
+        "core-master-01.local",
+        "core-master-01"
     ],
     "key": {
         "algo": "ecdsa",
@@ -16,4 +16,3 @@
         }
     ]
 }
-
