@@ -79,12 +79,13 @@ Vagrant.configure("2") do |config|
 
   (1..$num_instances).each do |i|
     if i == 1 then
-      node_type = 'master'
+      vm_type = 'master'
     else
-      node_type = 'worker'
+      vm_type = 'worker'
     end
+    print "vm type " + vm_type
 
-    config.vm.define vm_name = "%s-%s-%02d" % [$instance_name_prefix, node_type, i] do |config|
+    config.vm.define vm_name = "%s-%s-%02d" % [$instance_name_prefix, vm_type, i] do |config|
       config.vm.hostname = vm_name
 
       if $enable_serial_logging
@@ -145,32 +146,33 @@ Vagrant.configure("2") do |config|
         config.vm.synced_folder ENV['HOME'], ENV['HOME'], id: "home", :nfs => true, :mount_options => ['nolock,vers=3,udp']
       end
 
-<<<<<<< HEAD
 
-      if node_type == 'master' && File.exist?(CLOUD_CONFIG_PATH_MASTER) then
+      config.vm.provision :shell, :inline => "echo 127.0.0.1 #{vm_name} >> /etc/hosts", :privileged => true
+
+      config.vm.provision :file, :source => "tls/certs/", :destination => "/tmp/certs"
+      config.vm.provision :shell, :inline => "mkdir -p /etc/ssl/etcd/certs/client /etc/ssl/etcd/certs/private", :privileged => true
+      config.vm.provision :shell, :inline => "mv /tmp/certs/client* /etc/ssl/etcd/certs/client && mv /tmp/certs/ca.pem /etc/ssl/etcd/certs/", :privileged => true
+      config.vm.provision :shell, :inline => "chmod +r /etc/ssl/etcd/certs/client/* /etc/ssl/etcd/certs/ca.pem", :privileged => true
+
+      config.vm.provision :shell, :inline => "mv /tmp/certs/* /etc/ssl/etcd/certs/private/", :privileged => true
+      config.vm.provision :shell, :inline => "chown -R etcd:etcd /etc/ssl/etcd/certs/private", :privileged => true
+
+      if vm_type == 'master' && File.exist?(CLOUD_CONFIG_PATH_MASTER) then
+        print "Provisioning " + CLOUD_CONFIG_PATH_MASTER
         config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH_MASTER}", :destination => "/tmp/vagrantfile-user-data"
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
 
-        config.vm.provision :shell, :inline => "mkdir -p /etc/ssl/etcd/certs /tmp/certs", :privileged => true
+        #config.vm.provision :shell, :inline => "mkdir -p /etc/ssl/etcd/certs /tmp/certs", :privileged => true
 
         # Provision Certs, TODO make sure this gets uses node names
-        config.vm.provision :file, :source => "#{CERT_PATH}/ca.pem", :destination => "certs/ca.pem"
-        config.vm.provision :file, :source => "#{CERT_PATH}/etcd#{i}.pem", :destination => "certs/etcd#{i}.pem"
-        config.vm.provision :file, :source => "#{CERT_PATH}/etcd#{i}-key.pem", :destination => "certs/etcd#{i}-key.pem"
+        #config.vm.provision :file, :source => "#{CERT_PATH}/ca.pem", :destination => "certs/ca.pem"
+        #config.vm.provision :file, :source => "#{CERT_PATH}/etcd#{i}.pem", :destination => "certs/etcd#{i}.pem"
+        #config.vm.provision :file, :source => "#{CERT_PATH}/etcd#{i}-key.pem", :destination => "certs/etcd#{i}-key.pem"
 
-        config.vm.provision :shell, :inline => "mv certs/* /etc/ssl/etcd/certs/", :privileged => true
+        #config.vm.provision :shell, :inline => "mv certs/* /etc/ssl/etcd/certs/", :privileged => true
 
-      else node_type == 'worker' && File.exist?(CLOUD_CONFIG_PATH_WORKER)
+      else vm_type == 'worker' && File.exist?(CLOUD_CONFIG_PATH_WORKER)
         config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH_WORKER}", :destination => "/tmp/vagrantfile-user-data"
-=======
-      config.vm.provision :shell, :inline => "echo 127.0.0.1 ${vm_name} >> /etc/hosts", :privileged => true
-
-      config.vm.provision :file, :source => "tls/certs/", :destination => "/tmp/certs"
-      config.vm.provision :shell, :inline => "mkdir -p /etc/ssl/etcd/ && mv /tmp/certs/* /etc/ssl/etcd/", :privileged => true
-
-      if File.exist?(CLOUD_CONFIG_PATH)
-        config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH}", :destination => "/tmp/vagrantfile-user-data"
->>>>>>> me/master
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
       end
 

@@ -6,9 +6,9 @@ coreos:
     #discovery: https://discovery.etcd.io/<token>
     # multi-region and multi-cloud deployments need to use $public_ipv4
     name: default
-    initial-cluster: default=https://$public_ipv4:2380,default=https://core-master-01:2380
-    advertise-client-urls: https://$public_ipv4:2379,https://core-master-01:2379
-    initial-advertise-peer-urls: https://$private_ipv4:2380,https://core-master-01:2380
+    initial-cluster: default=https://$public_ipv4:2380,default=https://core-01:2380
+    advertise-client-urls: https://$public_ipv4:2379,https://core-01:2379
+    initial-advertise-peer-urls: https://$private_ipv4:2380,https://core-01:2380
     # listen on both the official ports and the legacy ports
     # legacy ports can be omitted if your application doesn't depend on them
     listen-client-urls: https://0.0.0.0:2379,https://0.0.0.0:4001
@@ -51,16 +51,16 @@ write_files:
       # Client Env Vars
       Environment=ETCD_CA_FILE=/etc/ssl/etcd/certs/ca.pem
 
-      Environment=ETCD_CERT_FILE=/etc/ssl/etcd/certs/core-master-01.pem
-      Environment=ETCD_KEY_FILE=/etc/ssl/etcd/certs/core-master-01-key.pem
+      Environment=ETCD_CERT_FILE=/etc/ssl/etcd/certs/core-01.pem
+      Environment=ETCD_KEY_FILE=/etc/ssl/etcd/certs/core-01-key.pem
       Environment=ETCD_CLIENT_CERT_AUTH=true
 
       # Peer Env Vars
       #Environment=ETCD_PEER_CA_FILE=/etc/ssl/etcd/certs/ca.pem
 
-      Environment=ETCD_PEER_CERT_FILE=/etc/ssl/etcd/certs/server.pem
-      Environment=ETCD_PEER_KEY_FILE=/etc/ssl/etcd/certs/server-key.pem
-      Environment=ETCD_PEER_CLIENT_CERT_AUTH=true
+      #Environment=ETCD_PEER_CERT_FILE=/etc/ssl/etcd/certs/etcd1.pem
+      #Environment=ETCD_PEER_KEY_FILE=/etc/ssl/etcd/certs/etcd1-key.pem
+      #Environment=ETCD_PEER_CLIENT_CERT_AUTH=true
 
   - path: /etc/profile.d/etcdctl.sh
     permissions: 0644
@@ -70,4 +70,4 @@ write_files:
       export ETCDCTL_CERT_FILE=/etc/ssl/etcd/certs/client.pem
       export ETCDCTL_KEY_FILE=/etc/ssl/etcd/certs/client-key.pem
       export ETCDCTL_CA_FILE=/etc/ssl/etcd/certs/ca.pem
-      export ETCDCTL_ENDPOINT=https://core-master-01:2379
+      export ETCDCTL_ENDPOINT=https://core-01:2379
