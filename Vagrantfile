@@ -136,6 +136,9 @@ Vagrant.configure("2") do |config|
 
       config.vm.provision :shell, :inline => "echo 127.0.0.1 ${vm_name} >> /etc/hosts", :privileged => true
 
+      config.vm.provision :file, :source => "tls/certs/", :destination => "/tmp/certs"
+      config.vm.provision :shell, :inline => "mkdir -p /etc/ssl/etcd/ && mv /tmp/certs/* /etc/ssl/etcd/", :privileged => true
+
       if File.exist?(CLOUD_CONFIG_PATH)
         config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH}", :destination => "/tmp/vagrantfile-user-data"
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
