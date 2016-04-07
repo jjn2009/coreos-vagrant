@@ -2,19 +2,21 @@
 # # vi: set ft=ruby :
 
 require 'fileutils'
+require 'erb'
 
 Vagrant.require_version ">= 1.6.0"
 
 
-CLOUD_CONFIG_PATH_MASTER = File.join(File.dirname(__FILE__), "user-data-master.yml")
-CLOUD_CONFIG_PATH_WORKER = File.join(File.dirname(__FILE__), "user-data-worker.yml")
+CLOUD_CONFIG_PATH_MASTER = File.join(File.dirname(__FILE__), "user-data-master.yml.erb")
+CLOUD_CONFIG_PATH_WORKER = File.join(File.dirname(__FILE__), "user-data-worker.yml.erb")
 
 CERT_PATH = 'tls/certs/'
 
 CONFIG = File.join(File.dirname(__FILE__), "config.rb")
 
 # Defaults for config options defined in CONFIG
-$num_instances = 1
+$num_instances = 3 
+$num_master = 3 
 $instance_name_prefix = "core"
 $update_channel = "alpha"
 $image_version = "current"
@@ -78,12 +80,11 @@ Vagrant.configure("2") do |config|
   end
 
   (1..$num_instances).each do |i|
-    if i == 1 then
+    if i <= $num_master then
       vm_type = 'master'
     else
       vm_type = 'worker'
     end
-    print "vm type " + vm_type
 
     config.vm.define vm_name = "%s-%s-%02d" % [$instance_name_prefix, vm_type, i] do |config|
       config.vm.hostname = vm_name
@@ -147,32 +148,44 @@ Vagrant.configure("2") do |config|
       end
 
 
-      config.vm.provision :shell, :inline => "echo 127.0.0.1 #{vm_name} >> /etc/hosts", :privileged => true
+      config.vm.provision :shell, :inline => "mkdir -p /tmp/certs/ && chown core:core /tmp/certs"
+      # Provision Client-Server Certs
+      puts "writing #{vm_name}.pem"
+      config.vm.provision :file, :source => "tls/certs/#{vm_name}.pem", :destination => "/tmp/certs/#{vm_name}.pem"
+      puts "writing #{vm_name}-key.pem"
+      config.vm.provision :file, :source => "tls/certs/#{vm_name}-key.pem", :destination => "/tmp/certs/#{vm_name}-key.pem"
+      # Provision Client Certs
+      config.vm.provision :file, :source => "tls/certs/client.pem", :destination => "/tmp/certs/client.pem"
+      config.vm.provision :file, :source => "tls/certs/client-key.pem", :destination => "/tmp/certs/client-key.pem"
+      # Provision Peer Certs
+      config.vm.provision :file, :source => "tls/certs/server.pem", :destination => "/tmp/certs/server.pem"
+      config.vm.provision :file, :source => "tls/certs/server-key.pem", :destination => "/tmp/certs/server-key.pem"
+      # Provision CA, but not key
+      config.vm.provision :file, :source => "tls/certs/ca.pem", :destination => "/tmp/certs/ca.pem"
 
-      config.vm.provision :file, :source => "tls/certs/", :destination => "/tmp/certs"
-      config.vm.provision :shell, :inline => "mkdir -p /etc/ssl/etcd/certs/client /etc/ssl/etcd/certs/private", :privileged => true
-      config.vm.provision :shell, :inline => "mv /tmp/certs/client* /etc/ssl/etcd/certs/client && mv /tmp/certs/ca.pem /etc/ssl/etcd/certs/", :privileged => true
-      config.vm.provision :shell, :inline => "chmod +r /etc/ssl/etcd/certs/client/* /etc/ssl/etcd/certs/ca.pem", :privileged => true
+      # Move TLS into right folders, ensure correct permissions
+      config.vm.provision :shell, :inline => <<-SCRIPT, :privileged => true
+        echo 127.0.0.1 #{vm_name} >> /etc/hosts
 
-      config.vm.provision :shell, :inline => "mv /tmp/certs/* /etc/ssl/etcd/certs/private/", :privileged => true
-      config.vm.provision :shell, :inline => "chown -R etcd:etcd /etc/ssl/etcd/certs/private", :privileged => true
+        mkdir -p /etc/ssl/etcd/certs/client /etc/ssl/etcd/certs/private
+        ls /tmp/certs/
+        mv /tmp/certs/client* /etc/ssl/etcd/certs/client
+        mv /tmp/certs/ca.pem /etc/ssl/etcd/certs/
+        chmod +r /etc/ssl/etcd/certs/client/* /etc/ssl/etcd/certs/ca.pem
+        mv /tmp/certs/#{vm_name}*.pem /etc/ssl/etcd/certs/private/
+        mv /tmp/certs/server*.pem /etc/ssl/etcd/certs/private/
+        chown -R etcd:etcd /etc/ssl/etcd/certs/private
+      SCRIPT
 
       if vm_type == 'master' && File.exist?(CLOUD_CONFIG_PATH_MASTER) then
-        print "Provisioning " + CLOUD_CONFIG_PATH_MASTER
-        config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH_MASTER}", :destination => "/tmp/vagrantfile-user-data"
+
+        # Template user-data, add vm_name to 
+        user_data = ERB.new(File.read(CLOUD_CONFIG_PATH_MASTER)).result(binding)
+        config.vm.provision :shell, :inline => "echo \"#{user_data}\" > /tmp/vagrantfile-user-data"
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
-
-        #config.vm.provision :shell, :inline => "mkdir -p /etc/ssl/etcd/certs /tmp/certs", :privileged => true
-
-        # Provision Certs, TODO make sure this gets uses node names
-        #config.vm.provision :file, :source => "#{CERT_PATH}/ca.pem", :destination => "certs/ca.pem"
-        #config.vm.provision :file, :source => "#{CERT_PATH}/etcd#{i}.pem", :destination => "certs/etcd#{i}.pem"
-        #config.vm.provision :file, :source => "#{CERT_PATH}/etcd#{i}-key.pem", :destination => "certs/etcd#{i}-key.pem"
-
-        #config.vm.provision :shell, :inline => "mv certs/* /etc/ssl/etcd/certs/", :privileged => true
-
       else vm_type == 'worker' && File.exist?(CLOUD_CONFIG_PATH_WORKER)
-        config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH_WORKER}", :destination => "/tmp/vagrantfile-user-data"
+        user_data = ERB.new(File.read(CLOUD_CONFIG_PATH_WORKER)).result(binding)
+        config.vm.provision :file, :source => "#{user_data}", :destination => "/tmp/vagrantfile-user-data"
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
       end
 
