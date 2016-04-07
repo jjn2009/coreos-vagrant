@@ -21,7 +21,7 @@ if [ ! -z $2 ]; do
   for i in `seq $2`; do
     cfssl gencert \-ca=certs/ca.pem -ca-key=certs/ca-key.pem \
         -config=ca-config.json -profile=client-server core-master.json \
-        | cfssljson -bare certs/core-master-`printf "%02d" $i`
+        | cfssljson -bare certs/core-worker-`printf "%02d" $i`
   done
 done
 
