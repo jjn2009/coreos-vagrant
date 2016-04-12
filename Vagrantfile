@@ -3,6 +3,8 @@
 
 require 'fileutils'
 require 'erb'
+require 'yaml'
+require 'open-uri'
 
 Vagrant.require_version ">= 1.6.0"
 
@@ -15,18 +17,20 @@ CERT_PATH = 'tls/certs/'
 CONFIG = File.join(File.dirname(__FILE__), "config.rb")
 
 # Defaults for config options defined in CONFIG
-$num_instances = 3 
-$num_master = 3 
+$num_instances = 3
 $instance_name_prefix = "core"
 $update_channel = "alpha"
 $image_version = "current"
 $enable_serial_logging = false
 $share_home = false
 $vm_gui = false
-$vm_memory = 1024
-$vm_cpus = 1
+$vm_memory = 2048
+$vm_cpus = 2
 $shared_folders = {}
 $forwarded_ports = {}
+$new_discovery_url="https://discovery.etcd.io/new?size=#{$num_instances}"
+$discovery_token_url = open($new_discovery_url).read
+
 
 # Attempt to apply the deprecated environment variable NUM_INSTANCES to
 # $num_instances while allowing config.rb to override it
@@ -36,6 +40,10 @@ end
 
 if File.exist?(CONFIG)
   require CONFIG
+end
+
+if ARGV[0].eql?('up')
+  `tls/create.sh #{$num_instances}`
 end
 
 # Use old vb_xxx config variables when set
@@ -80,7 +88,7 @@ Vagrant.configure("2") do |config|
   end
 
   (1..$num_instances).each do |i|
-    if i <= $num_master then
+    if i <= 3 then
       vm_type = 'master'
     else
       vm_type = 'worker'
@@ -147,19 +155,20 @@ Vagrant.configure("2") do |config|
         config.vm.synced_folder ENV['HOME'], ENV['HOME'], id: "home", :nfs => true, :mount_options => ['nolock,vers=3,udp']
       end
 
+      if ARGV[0].eql?('up')
+        `tls/create_with_ip_sans.sh #{i} #{ip}`
+      end
 
       config.vm.provision :shell, :inline => "mkdir -p /tmp/certs/ && chown core:core /tmp/certs"
       # Provision Client-Server Certs
-      puts "writing #{vm_name}.pem"
       config.vm.provision :file, :source => "tls/certs/#{vm_name}.pem", :destination => "/tmp/certs/#{vm_name}.pem"
-      puts "writing #{vm_name}-key.pem"
       config.vm.provision :file, :source => "tls/certs/#{vm_name}-key.pem", :destination => "/tmp/certs/#{vm_name}-key.pem"
       # Provision Client Certs
       config.vm.provision :file, :source => "tls/certs/client.pem", :destination => "/tmp/certs/client.pem"
       config.vm.provision :file, :source => "tls/certs/client-key.pem", :destination => "/tmp/certs/client-key.pem"
       # Provision Peer Certs
-      config.vm.provision :file, :source => "tls/certs/server.pem", :destination => "/tmp/certs/server.pem"
-      config.vm.provision :file, :source => "tls/certs/server-key.pem", :destination => "/tmp/certs/server-key.pem"
+      config.vm.provision :file, :source => "tls/certs/#{vm_name}-server.pem", :destination => "/tmp/certs/server.pem"
+      config.vm.provision :file, :source => "tls/certs/#{vm_name}-server-key.pem", :destination => "/tmp/certs/server-key.pem"
       # Provision CA, but not key
       config.vm.provision :file, :source => "tls/certs/ca.pem", :destination => "/tmp/certs/ca.pem"
 
@@ -179,9 +188,13 @@ Vagrant.configure("2") do |config|
 
       if vm_type == 'master' && File.exist?(CLOUD_CONFIG_PATH_MASTER) then
 
-        # Template user-data, add vm_name to 
-        user_data = ERB.new(File.read(CLOUD_CONFIG_PATH_MASTER)).result(binding)
-        config.vm.provision :shell, :inline => "echo \"#{user_data}\" > /tmp/vagrantfile-user-data"
+        # Template user-data, add vm_name to
+        user_data = ERB.new(File.read(CLOUD_CONFIG_PATH_MASTER)).result(binding)#.gsub(/\$/, '\$')
+        data = YAML.load(user_data)
+        yaml = YAML.dump(data)
+        File.open(".user-data.#{vm_name}.tmp", 'w') { |file| file.write("#{user_data}") }
+
+        config.vm.provision :file, :source => ".user-data.#{vm_name}.tmp", :destination => "/tmp/vagrantfile-user-data"
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
       else vm_type == 'worker' && File.exist?(CLOUD_CONFIG_PATH_WORKER)
         user_data = ERB.new(File.read(CLOUD_CONFIG_PATH_WORKER)).result(binding)

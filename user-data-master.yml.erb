@@ -3,10 +3,10 @@
 coreos:
   etcd2:
     #generate a new token for each unique cluster from https://discovery.etcd.io/new
-    #discovery: https://discovery.etcd.io/<token>
+    discovery: <%= $discovery_token_url %>
     # multi-region and multi-cloud deployments need to use $public_ipv4
-    name: default
-    initial-cluster: default=https://$public_ipv4:2380,default=https://<%= vm_name %>:2380
+    name: <%= vm_name %>
+    #initial-cluster: default=https://$public_ipv4:2380,default=https://<%= vm_name %>:2380
     advertise-client-urls: https://$public_ipv4:2379,https://<%= vm_name %>:2379
     initial-advertise-peer-urls: https://$private_ipv4:2380,https://<%= vm_name %>:2380
     # listen on both the official ports and the legacy ports
@@ -15,6 +15,10 @@ coreos:
     listen-peer-urls: https://$private_ipv4:2380,https://$private_ipv4:7001
   fleet:
     public-ip: $public_ipv4
+    etcd_servers: https://<%= vm_name %>
+    etcd_cafile: /etc/ssl/etcd/certs/ca.pem
+    etcd_certfile: /etc/ssl/etcd/certs/client/client.pem
+    etcd_keyfile: /etc/ssl/etcd/certs/client/client-key.pem
   flannel:
     interface: $public_ipv4
   units:

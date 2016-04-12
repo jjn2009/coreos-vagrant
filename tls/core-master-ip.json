@@ -2,7 +2,8 @@
     "CN": "core-master-__XX",
     "hosts": [
         "core-master-__XX.local",
-        "core-master-__XX"
+        "core-master-__XX",
+        "__IP"
     ],
     "key": {
         "algo": "ecdsa",
