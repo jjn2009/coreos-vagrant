@@ -15,12 +15,16 @@ coreos:
     listen-peer-urls: https://$private_ipv4:2380,https://$private_ipv4:7001
   fleet:
     public-ip: $public_ipv4
-    etcd_servers: https://<%= vm_name %>
+    etcd_servers: https://<%= vm_name %>:2379
     etcd_cafile: /etc/ssl/etcd/certs/ca.pem
     etcd_certfile: /etc/ssl/etcd/certs/client/client.pem
     etcd_keyfile: /etc/ssl/etcd/certs/client/client-key.pem
   flannel:
     interface: $public_ipv4
+    etcd_endpoints: https://<%= vm_name %>:2379
+    etcd_cafile: /etc/ssl/etcd/certs/ca.pem
+    etcd_certfile: /etc/ssl/etcd/certs/client/client.pem
+    etcd_keyfile: /etc/ssl/etcd/certs/client/client-key.pem
   units:
     - name: etcd2.service
       command: start
@@ -31,6 +35,10 @@ coreos:
       - name: 50-network-config.conf
         content: |
           [Service]
+          Environment=ETCDCTL_CA_FILE=/etc/ssl/etcd/certs/ca.pem
+          Environment=ETCDCTL_CERT_FILE=/etc/ssl/etcd/certs/client/client.pem
+          Environment=ETCDCTL_KEY_FILE=/etc/ssl/etcd/certs/client/client-key.pem
+          Environment=ETCDCTL_ENDPOINT=https://<%= vm_name %>:2379
           ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
       command: start
     - name: docker-tcp.socket
