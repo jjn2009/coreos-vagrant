@@ -19,17 +19,21 @@ coreos:
     etcd_cafile: /etc/ssl/etcd/certs/ca.pem
     etcd_certfile: /etc/ssl/etcd/certs/client/client.pem
     etcd_keyfile: /etc/ssl/etcd/certs/client/client-key.pem
+<% if $flannel_enabled %>
   flannel:
     interface: $public_ipv4
     etcd_endpoints: https://<%= vm_name %>:2379
     etcd_cafile: /etc/ssl/etcd/certs/ca.pem
     etcd_certfile: /etc/ssl/etcd/certs/client/client.pem
     etcd_keyfile: /etc/ssl/etcd/certs/client/client-key.pem
+<% end %>
   units:
     - name: etcd2.service
       command: start
     - name: fleet.service
       command: start
+<% if $flannel_enabled %>
+
     - name: flanneld.service
       drop-ins:
       - name: 50-network-config.conf
@@ -41,20 +45,69 @@ coreos:
           Environment=ETCDCTL_ENDPOINT=https://<%= vm_name %>:2379
           ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
       command: start
-    - name: docker-tcp.socket
+<% end %>
+
+    - name: docker.service
       command: start
-      enable: true
+      enabled: true
       content: |
         [Unit]
-        Description=Docker Socket for the API
+        Description=Docker Application Container Engine
+        Documentation=http://docs.docker.com
+        After=docker.socket network.target
+        Requires=docker.socket
 
-        [Socket]
-        ListenStream=2375
-        Service=docker.service
-        BindIPv6Only=both
+        [Service]
+        Environment="DOCKER_CGROUPS=--exec-opt native.cgroupdriver=systemd"
+        MountFlags=slave
+        LimitNOFILE=1048576
+        LimitNPROC=1048576
+        ExecStart=/usr/lib/coreos/dockerd daemon --host=fd:// $DOCKER_OPTS $DOCKER_CGROUPS
 
         [Install]
-        WantedBy=sockets.target
+        WantedBy=multi-user.target
+
+
+    - name: docker-swarm-manage.service
+      command: start
+      enabled: true
+      content: |
+        [Unit]
+        Description=Docker Swarm Manager
+        Documentation=http://docs.docker.com/swarm
+        After=docker.service
+        Requires=docker.service
+
+        [Service]
+        Environment="SWARM_RUN_OPTS=-v /etc/ssl/etcd/certs/:/etc/ssl/etcd/certs/ -v /var/run/docker.socket:/var/run/docker.socket --net=host"
+        Environment="SWARM_ETCD_CERT_OPTS=--discovery-opt kv.cacertfile=/etc/ssl/etcd/certs/ca.pem --discovery-opt kv.certfile=/etc/ssl/etcd/certs/client/client.pem --discovery-opt kv.keyfile=/etc/ssl/etcd/certs/client/client-key.pem"
+        Environment="SWARM_ETCD_HOST=etcd://<%= vm_name %>:2379"
+        ExecStart=/usr/bin/docker run $SWARM_RUN_OPTS swarm manage $SWARM_ETCD_CERT_OPTS $SWARM_ETCD_HOST
+
+        [Install]
+        WantedBy=multi-user.target
+
+
+    - name: docker-swarm-join.service
+      command: start
+      enabled: true
+      content: |
+        [Unit]
+        Description=Docker Swarm Join
+        Documentation=http://docs.docker.com/swarm
+        After=docker.service
+        Requires=docker.service
+
+        [Service]
+        Environment="SWARM_RUN_OPTS=-v /etc/ssl/etcd/certs/:/etc/ssl/etcd/certs/ --net=host"
+        Environment="SWARM_JOIN_OPTS=--advertise=$private_ipv4:2400"
+        Environment="SWARM_ETCD_CERT_OPTS=--discovery-opt kv.cacertfile=/etc/ssl/etcd/certs/ca.pem --discovery-opt kv.certfile=/etc/ssl/etcd/certs/client/client.pem --discovery-opt kv.keyfile=/etc/ssl/etcd/certs/client/client-key.pem"
+        Environment="SWARM_ETCD_HOST=etcd://<%= vm_name %>:2379"
+        ExecStart=/usr/bin/docker run $SWARM_RUN_OPTS swarm join $SWARM_JOIN_OPTS $SWARM_ETCD_CERT_OPTS $SWARM_ETCD_HOST
+
+        [Install]
+        WantedBy=multi-user.target
+
 write_files:
   - path: /run/systemd/system/etcd2.service.d/30-certificates.conf
     permissions: 0644
@@ -74,10 +127,11 @@ write_files:
       Environment=ETCD_PEER_KEY_FILE=/etc/ssl/etcd/certs/private/server-key.pem
       Environment=ETCD_PEER_CLIENT_CERT_AUTH=true
 
-  - path: /etc/profile.d/etcdctl.sh
+  - path: /etc/profile.d/default.sh
     permissions: 0644
     owner: core
     content: |
+      export DOCKER_HOST=localhost:2375
       # configure etcdctl to work with our etcd servers set above
       export ETCDCTL_CA_FILE=/etc/ssl/etcd/certs/ca.pem
 
