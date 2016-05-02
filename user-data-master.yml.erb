@@ -54,19 +54,19 @@ coreos:
         [Unit]
         Description=Docker Application Container Engine
         Documentation=http://docs.docker.com
-        After=docker.socket network.target
-        Requires=docker.socket
+        After=network.target
 
         [Service]
+        Environment="DOCKER_HOST_OPTS=-H tcp://0.0.0.0:2376"
+        Environment="DOCKER_TLS_OPTS=--tlsverify --tlscacert=/etc/ssl/etcd/certs/ca.pem --tlscert=/etc/ssl/docker/docker.pem --tlskey=/etc/ssl/docker/docker-key.pem"
         Environment="DOCKER_CGROUPS=--exec-opt native.cgroupdriver=systemd"
         MountFlags=slave
         LimitNOFILE=1048576
         LimitNPROC=1048576
-        ExecStart=/usr/lib/coreos/dockerd daemon --host=fd:// $DOCKER_OPTS $DOCKER_CGROUPS
+        ExecStart=/usr/lib/coreos/dockerd daemon --host=fd:// $DOCKER_HOST_OPTS $DOCKER_TLS_OPTS $DOCKER_OPTS $DOCKER_CGROUPS
 
         [Install]
         WantedBy=multi-user.target
-
 
     - name: docker-swarm-manage.service
       command: start
@@ -79,10 +79,13 @@ coreos:
         Requires=docker.service
 
         [Service]
-        Environment="SWARM_RUN_OPTS=-v /etc/ssl/etcd/certs/:/etc/ssl/etcd/certs/ -v /var/run/docker.socket:/var/run/docker.socket --net=host"
+        Environment="SWARM_RUN_OPTS=-v /etc/ssl:/etc/ssl -v /var/run/docker.socket:/var/run/docker.socket --net=host"
+        Environment="DOCKER_TLS_OPTS=--tlsverify --tlscacert=/etc/ssl/client/ca.pem --tlscert=/etc/ssl/client/cert.pem --tlskey=/etc/ssl/client/key.pem"
+        Environment="SWARM_OPTS=-H tcp://0.0.0.0:2377"
+        Environment="SWARM_TLS_OPTS=--tlsverify --tlscacert=/etc/ssl/etcd/certs/ca.pem --tlscert=/etc/ssl/docker/swarm.pem --tlskey=/etc/ssl/docker/swarm-key.pem"
         Environment="SWARM_ETCD_CERT_OPTS=--discovery-opt kv.cacertfile=/etc/ssl/etcd/certs/ca.pem --discovery-opt kv.certfile=/etc/ssl/etcd/certs/client/client.pem --discovery-opt kv.keyfile=/etc/ssl/etcd/certs/client/client-key.pem"
         Environment="SWARM_ETCD_HOST=etcd://<%= vm_name %>:2379"
-        ExecStart=/usr/bin/docker run $SWARM_RUN_OPTS swarm manage $SWARM_ETCD_CERT_OPTS $SWARM_ETCD_HOST
+        ExecStart=/usr/bin/docker run $SWARM_RUN_OPTS $SWARM_RUN_TLS_OPTS swarm manage $SWARM_OPTS $SWARM_TLS_OPTS $SWARM_ETCD_CERT_OPTS $SWARM_ETCD_HOST
 
         [Install]
         WantedBy=multi-user.target
@@ -99,8 +102,8 @@ coreos:
         Requires=docker.service
 
         [Service]
-        Environment="SWARM_RUN_OPTS=-v /etc/ssl/etcd/certs/:/etc/ssl/etcd/certs/ --net=host"
-        Environment="SWARM_JOIN_OPTS=--advertise=$private_ipv4:2400"
+        Environment="SWARM_RUN_OPTS=-v /etc/ssl/:/etc/ssl/ --net=host"
+        Environment="SWARM_JOIN_OPTS=--advertise=$private_ipv4:2376"
         Environment="SWARM_ETCD_CERT_OPTS=--discovery-opt kv.cacertfile=/etc/ssl/etcd/certs/ca.pem --discovery-opt kv.certfile=/etc/ssl/etcd/certs/client/client.pem --discovery-opt kv.keyfile=/etc/ssl/etcd/certs/client/client-key.pem"
         Environment="SWARM_ETCD_HOST=etcd://<%= vm_name %>:2379"
         ExecStart=/usr/bin/docker run $SWARM_RUN_OPTS swarm join $SWARM_JOIN_OPTS $SWARM_ETCD_CERT_OPTS $SWARM_ETCD_HOST
@@ -131,7 +134,9 @@ write_files:
     permissions: 0644
     owner: core
     content: |
-      export DOCKER_HOST=localhost:2375
+      export DOCKER_HOST=<%= vm_name %>:2377
+      export DOCKER_TLS_VERIFY=1
+      export DOCKER_CERT_PATH=/etc/ssl/client/
       # configure etcdctl to work with our etcd servers set above
       export ETCDCTL_CA_FILE=/etc/ssl/etcd/certs/ca.pem
 
