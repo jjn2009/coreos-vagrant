@@ -1,8 +1,8 @@
 {
-    "CN": "core-master-__XX",
+    "CN": "__XX",
     "hosts": [
-        "core-master-__XX.local",
-        "core-master-__XX",
+        "__XX.local",
+        "__XX",
         "__IP"
     ],
     "key": {
