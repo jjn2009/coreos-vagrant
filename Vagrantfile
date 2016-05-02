@@ -17,7 +17,7 @@ CERT_PATH = 'tls/certs/'
 CONFIG = File.join(File.dirname(__FILE__), "config.rb")
 
 # Defaults for config options defined in CONFIG
-$num_instances = 1
+$num_instances = 3
 $flannel_enabled = false
 $instance_name_prefix = "core"
 $update_channel = "alpha"
@@ -43,8 +43,9 @@ if File.exist?(CONFIG)
   require CONFIG
 end
 
+# TODO check if these are already generated
 if ARGV[0].eql?('up')
-  `tls/create.sh #{$num_instances}`
+  `tls/create-base.sh`
 end
 
 # Use old vb_xxx config variables when set
@@ -157,7 +158,7 @@ Vagrant.configure("2") do |config|
       end
 
       if ARGV[0].eql?('up')
-        `tls/create_with_ip_sans.sh #{i} #{ip}`
+        `tls/create-ip.sh #{vm_name} #{ip}`
       end
 
       config.vm.provision :shell, :inline => "mkdir -p /tmp/certs/ && chown core:core /tmp/certs"
@@ -170,21 +171,36 @@ Vagrant.configure("2") do |config|
       # Provision Peer Certs
       config.vm.provision :file, :source => "tls/certs/#{vm_name}-server.pem", :destination => "/tmp/certs/server.pem"
       config.vm.provision :file, :source => "tls/certs/#{vm_name}-server-key.pem", :destination => "/tmp/certs/server-key.pem"
+      # Provision Docker Certs
+      config.vm.provision :file, :source => "tls/certs/#{vm_name}-docker.pem", :destination => "/tmp/certs/docker.pem"
+      config.vm.provision :file, :source => "tls/certs/#{vm_name}-docker-key.pem", :destination => "/tmp/certs/docker-key.pem"
+      # Provision Docker Swarm Certs
+      config.vm.provision :file, :source => "tls/certs/#{vm_name}-swarm.pem", :destination => "/tmp/certs/swarm.pem"
+      config.vm.provision :file, :source => "tls/certs/#{vm_name}-swarm-key.pem", :destination => "/tmp/certs/swarm-key.pem"
       # Provision CA, but not key
       config.vm.provision :file, :source => "tls/certs/ca.pem", :destination => "/tmp/certs/ca.pem"
 
       # Move TLS into right folders, ensure correct permissions
+      # TODO figure out how to secure docker certs folder
       config.vm.provision :shell, :inline => <<-SCRIPT, :privileged => true
         echo 127.0.0.1 #{vm_name} >> /etc/hosts
 
-        mkdir -p /etc/ssl/etcd/certs/client /etc/ssl/etcd/certs/private
+        mkdir -p /etc/ssl/etcd/certs/client /etc/ssl/etcd/certs/private /etc/ssl/docker/ /etc/ssl/client
         ls /tmp/certs/
+        cp /tmp/certs/client.pem /etc/ssl/client/cert.pem
+        cp /tmp/certs/client-key.pem /etc/ssl/client/key.pem
+        cp /tmp/certs/ca.pem /etc/ssl/client/ca.pem
+        chmod +r /etc/ssl/client/*
+
         mv /tmp/certs/client* /etc/ssl/etcd/certs/client
         mv /tmp/certs/ca.pem /etc/ssl/etcd/certs/
         chmod +r /etc/ssl/etcd/certs/client/* /etc/ssl/etcd/certs/ca.pem
         mv /tmp/certs/#{vm_name}*.pem /etc/ssl/etcd/certs/private/
         mv /tmp/certs/server*.pem /etc/ssl/etcd/certs/private/
         chown -R etcd:etcd /etc/ssl/etcd/certs/private
+
+        mv /tmp/certs/swarm* /etc/ssl/docker/
+        mv /tmp/certs/docker* /etc/ssl/docker/
       SCRIPT
 
       if vm_type == 'master' && File.exist?(CLOUD_CONFIG_PATH_MASTER) then
