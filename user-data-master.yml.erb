@@ -59,11 +59,13 @@ coreos:
         [Service]
         Environment="DOCKER_HOST_OPTS=-H tcp://0.0.0.0:2376"
         Environment="DOCKER_TLS_OPTS=--tlsverify --tlscacert=/etc/ssl/etcd/certs/ca.pem --tlscert=/etc/ssl/docker/docker.pem --tlskey=/etc/ssl/docker/docker-key.pem"
+        Environment="DOCKER_CLUSTER_OPTS=--cluster-store=etcd://<%= vm_name %>:2379 --cluster-advertise 0.0.0.0:2376"
+        Environment="DOCKER_CLUSTER_ETCD_CERT_OPTS=--cluster-store-opt kv.cacertfile=/etc/ssl/etcd/certs/ca.pem --cluster-store-opt kv.certfile=/etc/ssl/etcd/certs/client/client.pem --cluster-store-opt kv.keyfile=/etc/ssl/etcd/certs/client/client-key.pem"
         Environment="DOCKER_CGROUPS=--exec-opt native.cgroupdriver=systemd"
         MountFlags=slave
         LimitNOFILE=1048576
         LimitNPROC=1048576
-        ExecStart=/usr/lib/coreos/dockerd daemon --host=fd:// $DOCKER_HOST_OPTS $DOCKER_TLS_OPTS $DOCKER_OPTS $DOCKER_CGROUPS
+        ExecStart=/usr/lib/coreos/dockerd daemon --host=fd:// $DOCKER_HOST_OPTS $DOCKER_TLS_OPTS $DOCKER_OPTS $DOCKER_CGROUPS $DOCKER_CLUSTER_OPTS $DOCKER_CLUSTER_ETCD_CERT_OPTS
 
         [Install]
         WantedBy=multi-user.target
